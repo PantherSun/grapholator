@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Graphing Calculator with X Bar</title>
+<style>
+body {
+  background: #1e1e1e;
+  color: #fff;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+  padding: 20px;
+}
+
+#input-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+input[type=text], input[type=color] {
+  padding: 6px;
+  font-size: 14px;
+  border-radius: 4px;
+  border: none;
+}
+
+button {
+  padding: 6px 10px;
+  font-size: 14px;
+  border: none;
+  border-radius: 4px;
+  background: #4caf50;
+  cursor: pointer;
+  color: white;
+}
+
+canvas {
+  border: 1px solid #fff;
+  background: #222;
+  cursor: grab;
+}
+
+.function-list {
+  margin-top: 10px;
+  width: 800px;
+}
+
+.function-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.function-item input[type=text] {
+  flex: 1;
+}
+</style>
+</head>
+<body>
+
+<h1>Graphing Calculator with X Bar</h1>
+
+<div id="input-section">
+  <input type="text" id="functionInput" placeholder="Enter function e.g. sin(x)" />
+  <input type="color" id="colorInput" value="#ff5722" />
+  <button onclick="addFunction()">Add Function</button>
+  <button onclick="clearFunctions()">Clear All</button>
+</div>
+
+<div class="function-list" id="functionList"></div>
+
+<canvas id="graphCanvas" width="800" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById('graphCanvas');
+const ctx = canvas.getContext('2d');
+
+let functions = [];
+let scale = 40; 
+let offsetX = canvas.width/2;
+let offsetY = canvas.height/2;
+let isDragging = false, dragStart = {x:0,y:0};
+let mousePos = {x:0,y:0};
+
+function parseFunction(str){
+  str = str.replace(/\^/g,'**');
+  str = str.replace(/\b(sin|cos|tan|log|sqrt|abs|exp|asin|acos|atan)\b/g,'Math.$1');
+  return str;
+}
+
+function drawGrid(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+
+  for(let x=0;x<canvas.width;x+=scale){
+      ctx.beginPath();
+      ctx.moveTo(x+offsetX%scale,0);
+      ctx.lineTo(x+offsetX%scale,canvas.height);
+      ctx.stroke();
+  }
+  for(let y=0;y<canvas.height;y+=scale){
+      ctx.beginPath();
+      ctx.moveTo(0,y+offsetY%scale);
+      ctx.lineTo(canvas.width,y+offsetY%scale);
+      ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, offsetY);
+  ctx.lineTo(canvas.width, offsetY);
+  ctx.moveTo(offsetX, 0);
+  ctx.lineTo(offsetX, canvas.height);
+  ctx.stroke();
+}
+
+function drawFunctions(){
+  functions.forEach((f, idx) => {
+      const parsed = parseFunction(f.expr);
+      ctx.strokeStyle = f.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for(let px=0; px<=canvas.width; px++){
+          const x = (px - offsetX)/scale;
+          let y;
+          try { y = eval(parsed.replace(/x/g, `(${x})`)); }
+          catch(e){ continue; }
+          const py = offsetY - y*scale;
+          if(px===0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+  });
+}
+
+function drawXBar(){
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(mousePos.x,0);
+  ctx.lineTo(mousePos.x,canvas.height);
+  ctx.stroke();
+
+  // Show Y values for all functions
+  let xValue = (mousePos.x - offsetX)/scale;
+  functions.forEach(f=>{
+      const parsed = parseFunction(f.expr);
+      let y;
+      try { y = eval(parsed.replace(/x/g, `(${xValue})`)); }
+      catch(e){ y = NaN; }
+      if(!isNaN(y)){
+          ctx.fillStyle = f.color;
+          ctx.beginPath();
+          const py = offsetY - y*scale;
+          ctx.arc(mousePos.x, py, 4, 0, Math.PI*2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.fillText(`${f.expr}: y=${y.toFixed(2)}`, mousePos.x+5, py-5);
+      }
+  });
+}
+
+function redraw(){
+  drawGrid();
+  drawFunctions();
+  drawXBar();
+}
+
+function updateFunctionList(){
+  const container = document.getElementById('functionList');
+  container.innerHTML = '';
+  functions.forEach((f, idx)=>{
+      const div = document.createElement('div');
+      div.className = 'function-item';
+      const input = document.createElement('input');
+      input.type='text';
+      input.value=f.expr;
+      input.onchange = e => { f.expr = e.target.value; redraw(); }
+      const colorInput = document.createElement('input');
+      colorInput.type='color';
+      colorInput.value=f.color;
+      colorInput.onchange = e => { f.color = e.target.value; redraw(); }
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent='Remove';
+      removeBtn.onclick = ()=>{ functions.splice(idx,1); updateFunctionList(); redraw(); }
+      div.appendChild(input);
+      div.appendChild(colorInput);
+      div.appendChild(removeBtn);
+      container.appendChild(div);
+  });
+}
+
+function addFunction(){
+  const expr = document.getElementById('functionInput').value.trim();
+  const color = document.getElementById('colorInput').value;
+  if(expr){
+      functions.push({expr,color});
+      document.getElementById('functionInput').value='';
+      updateFunctionList();
+      redraw();
+  }
+}
+
+function clearFunctions(){
+  functions=[];
+  updateFunctionList();
+  redraw();
+}
+
+// Mouse drag for panning
+canvas.addEventListener('mousedown', e=>{isDragging=true; dragStart={x:e.offsetX, y:e.offsetY}; canvas.style.cursor='grabbing';});
+canvas.addEventListener('mouseup', e=>{isDragging=false; canvas.style.cursor='grab';});
+canvas.addEventListener('mousemove', e=>{
+  if(isDragging){
+    offsetX += e.offsetX - dragStart.x;
+    offsetY += e.offsetY - dragStart.y;
+    dragStart = {x:e.offsetX, y:e.offsetY};
+  }
+  mousePos = {x:e.offsetX, y:e.offsetY};
+  redraw();
+});
+
+// Zoom
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const zoom = e.deltaY<0 ? 1.1 : 0.9;
+  scale *= zoom;
+  redraw();
+});
+
+// Default function
+functions.push({expr:'sin(x)', color:'#ff5722'});
+updateFunctionList();
+redraw();
+
+</script>
+</body>
+</html>
